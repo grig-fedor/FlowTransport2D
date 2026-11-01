@@ -1,0 +1,24 @@
+set(SOURCE
+    ${SOURCE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/mesh.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/comparator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/earray.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/element.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/node.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/edge.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/face.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/cell.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/eset.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/geometry.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/iterator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/modify.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/parallel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/kdtree.cpp
+    PARENT_SCOPE
+)
+
+set(HEADER
+    ${HEADER}
+    ${CMAKE_CURRENT_SOURCE_DIR}/incident_matrix.hpp
+    PARENT_SCOPE
+)

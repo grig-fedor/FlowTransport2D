@@ -1,0 +1,503 @@
+rm *_fix.xml; ~/Documents/Code/INMOST/closexml/a.out time_*.xml; scp *_fix.xml dodo.inm.ras.ru:/var/www/inmost.org/htdocs/
+mpiexec -np 2 lldb -s lldb.in ./AdaptiveMesh grid.vtk
+
+1) AdaptiveMesh sync andre branch
+1.a) (ok)  Remove marker pointers
+1.a.1) (ok) RemoveGhost
+1.b) (ok) Add PackData for reference type?
+1.c) (ok) ResolveShared - use Dijkstra algorithm to assign owners of ghost layers
+1.d) ExchangeGhost - integrate into ResolveModification, fix in amesh.cpp
+1.e) (ok) Uncomment and check coarsement algorithm
+1.f) Check code
+1.f.1) (ok) Sets exchange, PackElementsData for sets
+1.f.2) (ok) Reference exchange, maybe use PackElementsData in PackTagData
+1.f.3) ResolveSets - rewrite MPI_Bcast
+1.f.4) Add single function to Load sequential/parallel meshes
+1.f.5) Add single function to partition the mesh
+1.f.6) (ok) PackTagData - no DATA_REFERENCE in sparse data
+1.f.7) (ok) UnpackTagData - no DATA_REFERENCE for sparse data or dense fixed data!!!
+1.f.8) Replace only_new by marker?
+1.f.9) EquilibrateGhost - distance in graph of subgraph
+1.g) ExhangeData / ReduceData - set default select marker, move to the end
+2) Ruscdays paper
+2.a) Algorithms
+2.b) AdaptiveMesh
+2.c) Example: N-S or threephase
+3) Exchange reference_data:
+3.1) (ok) PackTagData
+3.1.1) (ok) use PackElementsData with array of elements
+3.1.2) (ok) pack offsets as links to send buffers
+3.2) (ok) UnpackTagData
+3.2.1) (ok) use UnpackElementsData, fill array
+3.2.2) (ok) restore links from offsets in array
+3.3) (ok) Check!!!
+3.3.1) (ok) Problem - no information synchronization about ownership, have to run another round of communications, roll back???
+4) SetData for DATA_REMOTE_REFERENCE is incorrect - check!!!
+5) EquilibrateGhost - distance in graph for subgraph, make only_new usefull
+5.1) equilibrate ghost for subelements - FACE, EDGE, NODE
+6) PackElementsData - Don't send element if it's already present, only it's id, especially important for elements of large sets, that may be already shared
+7) GetSet - Search tree for sets by name
+8) ExchangeGhost in ResolveModification
+9) PackElementsData / UnpackElementsData - don't pack elements that are already present on remote processor
+10) EquilibrateGhost - mark and synchronize marker with only_new
+10.1) Do we need the same in ResolveShared?
+11) (ok) add cell_set_id to create new sets with same short name instead of base64_encode
+12) check MFD-F scalability on cluster
+13) ResolveShared same_boxes - add whole mesh centroid comparison!
+14) AdaptiveMesh - second parent_set update in Coarse
+15) ResolveModification - ExchangeGhost - use marker for deleted new elements
+
+Изменение сетки:
+0) (готово) избавиться от получения ссылок на первый элемент массивов, заменить на data()
+1) (отменено) заменить erase из array сдвигом элементов, затем resize'ом
+2) (готово) перевести массив соседних элементов в ReferenceArray
+3) (готово) маркеры в виде массива char, вовне хранить маркер как short, в верхних битах - номер в массиве, в нижних - маска
+4) (готово) перенести разреженные данные в сетку
+5) (готово как ч) представлять разреженные данные с помощью разреженных векторов в блоках
+6) (готово) перенести геометрический тип в стандартные данные
+7) (готово) сделать два отдельных типа chunk_bulk_array - для данных с размером записи и chunk_array - для элементов, без размера записи
+8) (готово) хранить элементы блоками по хххх вместе с данными
+8.1) нужен ли переход на двунаправленный список внутри каждого блока
+10) (готово) не хранить ссылки на элементы в сетке 
+10.-1) (готово) Обеспечить корректные переходы в Element на соответствующие типу getNodes,getEdges,getFaces,getCells
+       без этого не будут работать геометрические алгоритмы
+10.0) (готово, проверить) модифицировать выделение памяти в array, объем выделяемой памяти должен вычисляться исходя из текущего размера наперед
+10.1) (готово) Сделать структуру на основе adjacent через которую будут подаваться элементы (внутри хранится сетка и последовательно ID элементов, по запросу выдаются элементы)
+10.1.0) (отменено, две разных структуры, 10.6) Структура должна поддерживать два разных контейнера - array (для reference_array) и dynarray (для запроса соседних элементов)
+10.1.1) (готово) Структура должна давать подход для модификации идентификаторов элементов
+10.2) (готово) Переделать ElementSet - элементы должны храниться в сетке, LowConn хранит элементы, содержащиеся в данном множестве, 
+	HighConn если не пустой, то 1-ый элемент - множество родитель, второй - множество сосед, третий - множество первый ребенок (взять модель из INMOST_experimental)
+	добавить tag_set_size, который хранит текущий размер множества, изменять размер LowConn с запасом
+	как работать с упорядоченными множествами?
+        Отдельный дополнительный массив помнит какие элементы удалены, для быстрой вставки
+10.2.0) (готово) Вставка элемента, нескольких элементов
+        если множество сортированно:
+          под один элемент - если существует пустая позиция, такая что множество остается сортированным, то вставить, если нет, использовать insert
+          под несколько элементов - создать новый array, выполнить слияние, выполнить swap на структуру типа array
+        если не сортированы, то через маркеры
+10.2.1) (готово) Операции над множествами - объединение, пересечение, разница, выдавать результат на основе структуры из 10.1
+          Два множества помеченные как сортированные - операции с учетом того, что множества сортированные
+          Иначе через маркеры
+10.2.2) (готово) Исправить ApplyModification
+10.2.3) (готово) исправить чтение VTK
+10.2) (готово) Запрашивать данные через сетку по номеру типа и ID
+10.3) (готово) Переделать конструкторы для Cell, Face, Edge, Node, ElementSet - они более не хранятся в сетке, создаются через ID и ссылку на сетку
+10.4) (отмена) Cell,Face,Edge,Node,ElementSet могут итерировать по ID
+10.5) (готово) reference_array должен работать как новая структура
+10.6) (готово) Переделать createCell, CreateFace.. - внутри используется TieElement вместо new, элементы подаются через новую структуру из 10.3
+11) (отмена) Markers, HighConn, LowConn - живут непосредственно в TagManager, возможно, ускорит доступ, но не будут работать стандартные процедуры
+26) (готово) Оптимизировать сравнения элементов
+26.1) (готово для ссылок и глобальных идентификаторов)Для сортировки по координатам и ссылкам можно использовать radix (взять из INMOST_experimental)
+    для координат необходимо 25*n операций при использовании 8-битных компараторов, что означает новый алгоритм будет лучше при 16млн сортируемых элементов
+    либо 17*n при использовании 11-битных компараторов, что будет выгоднее при 131 тыс элементов
+27) (готово) Убрать функции Read* для чтения pmf, поместить код внутрь
+28) (готово) заменить std::vector с известным размером на array
+29) (отменено) заменить std::vector на array в параллельной части
+31) (готово) TagManager & TagManager::assign(Mesh * m, TagManager const & other) не будет копировать данные при новой модели работе с элементами
+33) (готово) Оптимизировать ElementNum, так как в ElementType значимые только 6 битов
+34) (готово) Storage для адресации данных должно вызывать функции, определенные для сетки
+36) (уже сделано) Проверить, стоит ли заменить функции в Storage вызовами аналогичных функций из Mesh
+50) (готово) заменить в container.hpp enumerator на size_type
+51) (готово) использовать спецификацию для итераторов с произвольным доступом в container.hpp (использовать определение iterator_category?)
+41) (уже сделано) Закомментировать HighConn, LowConn в элементах, посмотреть будет ли быстрее если использовать из сетки
+44) (нужна проверка) В PackElementsData вместо бинарного поиска для нахождения позиций можно использовать tag
+46) (нужна проверка) не создавать доп.массивы для данных при отправке и приеме элементов, использовать маркер
+19) (готово) корректная ориентация для невыпуклых многоугольников (найти одну хорошую грань, затем восстановить ориентацию по ребрам)
+20) (готово) вычислять наименьший объем невыпуклых многоугольников в алгоритме разбиения элементов
+63) (готово) Почистить автодифференцирования от старого класса expr
+
+=====================================================================================
+0) обновить список исходя из того, что сделано
+
+14) уметь пересылать ReferenceArray?
+
+16) заменить parallel_storage на множества
+17) научиться пересылать множества?
+
+
+18) рассмотреть возможность разбиения сетки на подсетки
+
+19.а) перенести алгоритм вычисления объема для невыпуклых многоугольников из incident_matrix.hpp incident_matrix::compute_measure в geometry.cpp Mesh::GetGeometricData
+
+21) встроить восьмидерево/кд-дерево для быстрого поиска элементов сетки (kd можно взять из examples/OldDrawGrid)
+22) ResolveShared должен находить общие элементы начиная с ячеек
+23) если назначить глобальные индификаторы до загрузки сетки, они не будут переназначены
+24) Диагностика возможных проблем при параллельных расчетах
+25) Индикация, что глобальную нумерацию надо пересчитать
+30) Баг - sort и ReorderApply не будут работать, так как chunk_array не непрерывен в памяти
+    ReorderApply через radix-сортировку?
+32) Изменить принцип работы для двумерных сеток, не хранить ребра, работать через Cell, Face, сделать Edge и Node тождественными
+35) Оптимизировать Bridge* функции
+37) Выделение памяти должно проходить через container.hpp, чтобы внутри можно было отследить количество используемой памяти
+38) Корректный алгоритм для GatherBoundaryFaces/GatherInteriorFaces в параллельном режиме
+39) CastRay не доделан для ребра, для множества и для сетки
+40) Дерево как отдельный тип элемента?
+42) Взять код для Inside из discr_common.cpp
+43) Имеет смысл оптимизировать RestoreCellNodes?
+45) При упаковки элементов возможно следует переслать данные только принадлежащие отсылающему процессору?
+    Данные от других процессоров либо уже есть либо могут быть посланы обратно при информировании. (на один цикл отправки больше)
+47) Не упаковывать данные для элементов, которые известно что существуют на другом процессоре, посылать пометку по которой их можно найти?
+49) использовать структуру типа лес восьми-деревьев для поиска пересечения узлов
+    можно хранить структуру постоянно либо строить по запросу
+    использовать при загрузке файлов вместо сортировки
+    при пересылке элементов, посылающий процессор может строить структуру для передаваемых элементов
+    в ResolveShared
+    в ModificationResolve
+52) проверить, что radix будет работать на big-endian машинах
+53) проверить будет ли быстрее SortByGlobalID, если переписать globalid в массив
+54) проверить новые алгоритмы для множеств (создать unit tests)
+55) Для mpi_send/mpi_recv выбирать таг из булевого массива или из массива пустых тагов - более безопасно чем полагаться на произвольное число
+56) Enumerate with mask should accept MarkerType select to select elements
+57) GlobalID service class with different operation options to help pick new global ids when mesh is modified locally
+    options:
+     a) global id continuous among processors
+     b) global id may have gaps but local interval for each processor is bounded
+     c) global id is just a unique number
+
+58) записать множества в отдельные vtk-файлы по опции "VTK_WRITE_SETS_TO_FILES" = "YES"
+
+59) Openmp для параллельных алгоритмов
+60) ResolveShared должен принимать MarkerType, для того чтобы работать с подмножеством элементов (нужно для ResolveModification)
+61) ResolveModification может использовать биекцию между старыми и новыми элементами для определения принадлежности элемента процессору.
+
+62) Добавить тип данных DATA_UNKNOWN по классу unknown из автодифф
+
+
+
+64) Automatizator должен принимать несколько сеток
+
+65) Добавить возможность гибко деактивировать переменные в векторах в автодифференцировании с помощью Bulk данных вместо MarkerType.
+
+66) Закончить вычисления Гессиана
+
+65) Дополнительные типы данных для Гессиана (???)
+
+66) Добавить класс Map для RowMerger, чтобы менять индексы элементов в конец массива для неизвестных не принадлежащих данному процессору (алгоритмы можно взять из класса OrderInfo и использовать там новый класс)
+
+67) Добавить класс Graph, который можно использовать как в Partitioner так и в Solver
+
+68) Redistribute должен получать tag извне
+
+69) Алгоритм который не меняет структуру ghost-ячеек в Partitioner::Evaluate, использовать ReduceData.
+
+
+
+
+====================================================================================
+
+
+INMOST Mesh
+0) TagDenseFixed, TagSparseFixed, TagDenseVariable, TagSparseVariable
+	dynamic_variable, static_variable may be templatized with respect to type of the Tag
+	
+1) rewrite parallel_storage
+	(?) RecomputeParallelStorage detect element types in ExchangeMarked
+	Either organise separation per element type in ElementSet, or store 4 element sets.
+	
+2) volume for nonconvex elements
+	implement in incedence_matrix in modify.cpp
+3) (ok) New mesh format reader, XML
+	search tag positions in file
+	parallel reader
+4) octree structure for intersection of remote nodes
+	in ResolveShared
+	in UnpackElementsData
+	in file reading procedures
+5) algorithm for dynamic mesh adaptation in parallel
+	ResolveShared should depend on marker
+	Algorithm of shortest path to close the gap in shared skin
+	OR remap processors numbers from old cells onto new ones using bijection of cell centers
+7) Introduce INMOST DataBase, that should be outside
+	(?) ElementSet should have data for it's elements, Mesh should become ElementSet
+	Move MGetLink and all the mechanism to access data into TagManager
+	Move inline functions for Storage from inmost_mesh to inmost_data
+9) (test) add DATA_REMOTE_REFERENCE, RemoteHandleType data type and structure that will allow to link another mesh
+	(ok) static Mesh::GetMesh(std::string name), structure to collect meshes by name.
+        Save multiple meshes to file
+10) (test,ok) algorithm in PackTagData for DATA_VARIABLE
+	(ok) GetData,SetData,SetDataSize - add DATA_VARIABLE
+	(ok) GetDataSize - returns number of entries in array
+	(ok) GetDataCapacity - returns space capacity occupied by all the data (specific for DATA_VARIABLE)
+	(ok) GetData - puts all the data into allocated array of size GetDataSpace
+	(ok) SetData - given the number of entries is known, knows how to fill the internal data 
+	(ok) MPI type for DATA_VARIABLE
+	Destroy type on Finalize
+	Test!
+	(ok) Should get capacity of unpacked data, provide function ComputeCapacity
+		See next
+		(ok) Organize GetDataCapacity with parameter that represents storage and size information
+	(ok) Provide tools to retrive data from bytes arrays in Unpack functions
+		(ok) variable::RecordEntry - write into array of Row::entry
+		(ok) variable::RetriveEntry - get out of array of pairs
+		(ok) variable::RetriveSizeEntry - how many entries used to store
+		(ok) variable::RequiredSizeEntry - how many entries are needed to store
+11) DATA_REFERENCE, DATA_REMOTE_REFERENCE can use PackElements in PackTagData
+	Have to make rounds of communication as in ExchangeMarked
+	Presence of Tag of type DATA_REFERENCE and DATA_REMOTE_REFERENCE should internally mark the elements, invoke ExhchangeMarked
+12) Orientation of edges as directed, order faces with right hand side rule, each face's normal should follow right hand side rule
+	Insertion of faces into edge
+	Orientation of faces
+	Optimized algorithms:
+		all cells of the edge (traverse faces, get back cell)
+		all nodes of the face (traverse edges, always get first node)
+		all faces of the node (traverse only edges that are directed outside or inside, get their faces)
+		
+
+INMOST Solvers:
+	-1) (ok) Move annotation into matrix as outstanding structure that can be allocated on demand
+	0) (no) BasicRow class for autodiff or above
+	1) Rewrite BCGS as with Anderson Acceleration
+	3) Internal CSRMatrix format
+		3.1) Reorderings for CSRMatrix with PQ (RCM,ColAMD,MetisND)
+		3.2) Reorderings with execution tree (Mondriaan)
+		3.3) CSRMatrix functions - transpose, swap row/column, compute schur with LU, multiply vector, additive schwartz...
+		3.4) types for CSRMatrix
+		3.5) fast row/col exchange for MPTILUC
+	4) Fast laplacian matrix factorization graphs: Horst Simon, C:\Users\KIRILL\Documents\Read\solver\laplacian_graph
+	5) condition estimation for ilu2
+	6) Purely algebraic CPR (see galerkin principle)
+	7) PrepareMatrix should be able to merge rows in parallel, just sum the row on lowest-rank processor, have to return the solution on every processor.
+
+INMOST Autodiff
+	0) Gateaux derivatives
+	1) Clean old staff
+	2) Superproblem definition??
+	3) Read about Fenics
+	4) (ok) Automatizator::MakeCurrent, Automatizator::GetCurrent, Automatizator::HasCurrent
+		(ok) variable should detect presence of current automatizator and access it's structures
+	5) Abstraction of KeyValueTable, 
+		add cubic spline, 
+		add bc treatment
+	6) condition_etype_variable, condition_marker_variable - needed in THREEPHASE in interpolation
+	7) support std::swap
+	8) expression foreach that will iterate over elements or elements handles
+	
+
+
+INMOST Nonlinear
+	1. Newton
+	2. Line search
+	3. Anderson
+	4. http://fenicsproject.org/documentation/tutorial/nonlinear.html
+	nonlinear solvers: Hans De Sterck
+
+	Nonlinear solvers for INMOST L-BFGS 
+		1) Rewrite onephase into class with ComputeFunction, ComputeGradient, ComputeHessian(?)
+		2) Create abstract problem class for nonlinear solvers within INMOST
+		3) reimplement Newton/LS/AA into INMOST
+		4) implement L-BFGS https://github.com/PatWie/CppNumericalSolvers/blob/master/src/LbfgsSolver.cpp
+		5) hessian https://en.wikipedia.org/wiki/Hessian_automatic_differentiation
+
+
+====================================================================================
+
+7.MSPP: (готово) множества: операции, иерархия, обмен
+8.MSPP: кластеризация
+9.MSPP: (готово) исправить предупреждения в visual studio
+10.MSPP: придумать более гибкий механизм учета модификации матрицы (вообще не думать о модификации)
+11. (готово) Абстракция для предобуславливателя и метода решения
+12. Оптимальное число перекрытий (например, отсечение по коэффициентам)
+12. (готово) MSPP: заменить ссылки на элементы самими элементами в Mesh
+13. MSPP: попробовать ускорить Redistribute!!! ExchangeGhost
+
+13. INMOST / MMTK = Mathematical Modelling ToolKit / NSTK
+
+(готово) last_created_element - завершить механизм
+
+
+Изменение автодиффиринцирования
+1) Одновременное присутствие автодиффиринцирования двух типов - интсруктивное и немедленное,
+инструктивное позволяет передать инструкцию для выполнения при подстановке объекта (например ячейки), который содержит
+данные используемые в инструкции - удобно использовать если необходимое выражение заранее не известно
+немедленное выполняет заданную операцию и складывает два разреженных вектора, описывающих частные производные в вектор
+данного выражения - удобно использовать для сложных циклов 
+2) small_hash -> dynarray
+3) сортировка выражений по приоритету
+4) запоминать все элементы из которых был выполнен заход в текущий шаблон
+5) ввести функцию parent() для запроса элемента из которого был выполнен заход в текущий шаблон
+6) выгружать общие блоки из условного оператора
+7) ввести оператор , и [] для одновременного вычисления нескольких вложенных выражений и адресации результатов
+8) ввести векторные и тензорные операции для вложенных выражений
+9) заранее запрашивать все шаблоны и расширять память под все значения и производные, включая
+возможность вложенного захода в шаблон (сейчас при вложенном заходе память будет выделена не правильно)
+10) заранее запрашивать все данные, попробовать оптимизировать запрос при идентичности шаблонов
+11) выполнять компиляцию на лету с помощью LLVM или asmjit
+12) параллельное openmp выполнение
+13) генерация opencl кода, параллельная openmp подготовка и подача данных и обработка результатов
+14) возможность использовать уже посчитанные значения выражений и производных
+
+Изменение разбивалки
+1) К-кластеризация
+
+Изменение солвера
+1) проблема с ненулевым начальным решением
+2) отделить ILUC2 факторизацию
+3) при факторизации откладывать столбцы/строки, которые приводят к увеличению обусловленности
+4) постараться не переупорядочивать E,F блоки после факторизации
+5) обновлять числа обусловленности при вычислении блоков EU^-1 L^-1F
+6) усовершенствовать эвристику отбрасывания значений в дополнении по шуру
+7) несимметричное вложенное разбиение для параллельной (openmp) факторизации
+8) параллельное (openmp) вычисление EU^-1, L^-1F блоков и дополнения по Шуру
+9) разобраться в методе nicole spillane
+10) факторизовать вначале ту часть, для которой требуется найти наименьшие собственные значения
+11) найти наименьшие собственные значения с помощью метода amls
+12) найти грубое подпространство по найденным собственным значениям
+
+13) Новый метод для классов Matrix и Row:
+Row::MergeRows(linked_list_storage, row b 
+Matrix::MergeRow(alpha, row & a, real beta, row &b)
+14) классы CSRMatrix, CSRRow
+15) конвертация Matrix -> CSRMatrix
+16) OrderInfo должен работать с CSRMatrix
+17) 
+
+
+solver:
+read mc64
+read nested dissection
+try to postpone ReorderEF to the end of run
+
+5.MSPP: структура данных для строк матрицы
+6.MSPP: реализовать модуль решения систем
+готово 6.0 метод bicgs(l)
+6.0 OrderInfo -> ASM_preconditioner?
+6.0.1 OrderInfo.PrepareMatrix(A,levels) -> ASM_preconditioner(A,levels) : Method
+6.0.3 OrderInfo.PrepareVector(vector) -> Matrix.PrepareVector(vector)
+6.0.4 OrderInfo.Update(vector) -> Matrix.Update(vector)
+6.0.5 orderInfo.Accumulate(vector) -> Matrix.Accumulate(vector)
+6.1 улучшить алгоритм перекрытия матриц (проверить, заменить MPI_Waitall->MPI_Waitsome)
+6.2 Update(vector) -> UpdateBegin, UpdateEnd, различные виды обновления для инициализации, предобуславливателя шварца и умножения (INIT,PREC,MATVEC)
+6.3 переупорядочивание для локальной (глобальной?) матрицы перед выполнением ilu2 (подсмотреть superlu?)
+6.3.1 статическое переупорядочивание для диагонального преобладания
+info->PrepareMatrix(A,0)
+
+6.3.2 переупорядочивание для уменьшения заполнения
+6.4 адаптивно определять параметр tau 
+6.5 алгебраически находить грубое подпространство при параллельном решении задачи
+6.6 подсмотреть в superlu параллельную реализацию факторизации
+6.7 различные методы улучшение - сдвиги диагонали и т.п.
+
+
+
+//FOR 2D
+// Node -> Vertex
+// Edge -> Vertex
+// Face -> Line, Curve
+// Cell -> Tri, Quad, Polygon, MultiLine
+
+//FOR 3D
+// Node -> Vertex
+// Edge -> Line, Curve
+// Face -> Tri, Quad, Polygon, MultiLine
+// Cell -> Tet, Hex, Prism, Pyramid, Polyhedron, MultiPolygon
+
+
+
+//TODO:
+
+
+1D???
+
+
+//serial
+//1.0 read/write formats
+//	1.1 read gmv
+//	1.2 read different kinds of vtk besides unstructured
+//	1.3	read/write xml vtk formats
+
+//  1.4 pmf: print error when markers cannot be represented in current type and data was lost
+//  1.5 pmf: save hide_marker, new_marker values
+//  1.6 pmf: save topology checking information
+
+
+//2. enchance iterators
+// iterators should return pointers or references?
+
+//3. geometry.cpp
+// 3.0 decide how FixNormalOrientation should update geometric data
+// 3.1 replace calculation of normale by hyperplane equation for any dimension??
+// 3.2 correct Inside function to check weather point inside Segment, Polygon
+// 3.3 dynamically balanced obtree or octree or kd-tree to query elements by position
+
+
+//4. (done, need check) add some low-level mesh modification procedures to elements
+//	5.1 add some high-level mesh modification procedures: split by plane, 
+//  5.2 csg: difference, union, intersection
+//  5.3 calculate volume for concave elements, choose elements by minimum volume, not minimum number of elements in incident_matrix class (modify.cpp)
+
+//5. reduce size used by sparse data
+
+//6. new ElementSet class, derived from Element class
+// 6.1 support ierarhy
+
+//7. algorithm that checks topology on element creation
+// 7.1 complete unimplemented tests for star-shaped objects, concavity
+
+//parallel:
+//1. algorithm in EndModification or ResolveModification to keep the mesh in parallel consistent state after element creation/deletion
+//	1.1 restore contiguous global id
+
+//2. test algorithm that checks for halo in ExchangeMarked, if performance increases
+
+//3. decide how to exchange ElementSets between processors
+
+//4. exchange data of type DATA_REFERENCE, by GlobalID and ElementType
+
+//5. mesh_file.cpp
+//  5.1 on parallel load, when there are more processors then parts in mesh - duplicate mesh on other processors??
+//  5.2 when mesh is duplicated over many processors use local clusterization algorithm in ResolveShared
+
+// shared parallel
+//1. avoid markers in nbAdjElements, getAdjElements, getNodes, getEdges, getFaces, getCells, BridgeAdjacency
+
+// partitioner:
+//1. implement K-means clustering
+
+//solver:
+//0. workaround for overlapping vertices and matrices
+
+//1. read TODO on top of solver_*.hpp
+
+//autodiff:
+//1. read TODO on top of INMOST_autodiff.h
+
+
+//TODO:
+
+
+// Recheck computation of derivatives!!!!
+// Detect similar parts of the tree in Automatizator
+// Restructure tree expressions
+// Intorduce multivariate tables
+// Generate opencl code
+
+// Make so that stencil may be represented by tags, by set or by callback_function
+
+//RegisterTable and table implementation should account for boundary conditions beyond data
+
+
+
+
+//SOLVER todo:
+
+//TODO:
+// how to calculate diagonal perturbation?
+// how to calculate schur complement faster
+// 
+// done! implement crout-ILU from 
+//   Documents/Read/solver/crout/crout.pdf to ILUC_preconditioner
+// done! implement condition estimation for |L^{-1}| and |U^{-1}| and adaptive tau for ILUC_preconditioner from 
+//   Documents\Read\solver\Read_now\bollhofer_siam.pdf
+// done! try to make ILUC2_preconditioner - second order ILU from ILUC_preconditioner
+// done! implement diagonal pivoting for ILUC - maybe need to update diagonal at every step
+//   goto references [7],[10]-(data structure!) from
+//   Documents\Read\solver\crout\crout.pdf
+// return dropped values to diagonal if control vector is provided from
+//   Documents\Read\solver\stabilization\milut.pdf
+// try to apply dropping while forming linked list,should correctly calculate condition estimates 
+
+// Calculate schur complement faster:
+//   Documents\Read\solver\sparse_matmul\sparse.pdf
+
+// in ILUC_preconditioner, replace matrix structures by CSR, estimate number of nonzeros in rows/cols
+// before filling, if necessery (how?)

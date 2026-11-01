@@ -1,0 +1,86 @@
+{
+  "mesh": {
+    "Nx": 100,
+    "Ny": 2,
+    "Lx": 1.0,
+    "Ly": 0.1,
+	//юго-западный угол модели
+	"x0": 0.0,
+	"y0": 0.0
+  },
+  "materials": {
+    "Default": {
+      "thickness": 1.0, 
+      "permeability": 1.0, 
+      "storage": 1e-3,
+      "porosity": 0.5,
+      "diffusivity": 1e-9,
+      "alphaL": 0.1,
+      "alphaT": 0.01
+    }
+  },
+  "num_parameters":{
+	  "linear_solver_type": "inner_ilu2",
+	  "epsilon": 1e-10,
+	  "time_step": 0.0025,
+	  "time_step_number": 100,
+	  "save_intensity": 10
+  },
+  "flow":{
+	"bc_pressure": {
+		"list": {
+		  "0": {
+			"type": "Neumann",
+			"value": 0.0
+		  },
+		  "1": {
+			"type": "Dirichlet",
+			"value": 1.0
+		  },
+		  "2": {
+			"type": "Dirichlet",
+			"value": 0.0
+		  }
+		},
+		"sides": {
+		  "north": 0,
+		  "east": 2,
+		  "south": 0,
+		  "west": 1
+		}
+	},
+	"steady": true,
+	"IC": 1.0  
+  },
+  "transport": {
+    "mob_components": ["Na", "Cl"],
+	"initial_conditions": {
+	  "mobile": {
+		"Na": 0.0,
+		"Cl": 0.0
+	  }
+	},
+	"bc_transport": {
+		"list": {
+		  "0": {
+			"type": "Dirichlet",
+			"values": {
+			  "Na": 0.0,
+			  "Cl": 0.0
+			}},
+		  "1": {
+			"type": "Dirichlet",
+			"values": {
+			  "Na": 0.01,
+			  "Cl": 0.02
+			}}
+		},
+		"sides": {
+		  "north": 0,
+		  "east": 0,
+		  "south": 0,
+		  "west": 1
+		}
+	}
+  }
+}
